@@ -247,21 +247,6 @@ Pemeriksaan keamanan yang diimplementasi:
   (selalu menambah blok penuh bila perlu).
 - Verifikasi ke benar: vektor resmi FIPS-197 Appendix B dan C, NIST SP 800-38A CBC.
 
-## Wireshark
-
-1. Pilih interface yang dipakai (Wi-Fi/Ethernet perangkat). Bila semua proses di satu
-   mesin, pilih loopback (Windows: `Adapter for loopback traffic capture`;
-   Linux: `lo`). Pesan `my IP towards KDC` di node menunjukkan interface yang benar.
-2. Filter utama: `tcp.port == 5000 || tcp.port == 6001 || tcp.port == 6002`
-3. Filter per langkah: `tcp contains "KEY_REQUEST"`, `tcp contains "KEY_RESPONSE"`,
-   `tcp contains "TICKET"`, `tcp contains "CHALLENGE"`, `tcp contains "RESPONSE"`,
-   `tcp contains "MSG"`.
-4. Klik kanan paket -> Follow -> TCP Stream: satu stream A<->KDC (langkah 1-2),
-   satu stream A<->B (langkah 3-5 lalu MSG dua arah).
-5. Yang terlihat: langkah 1 dan pesan kontrol plaintext terbaca; semua payload
-   terenkripsi hanya hex. `Ka`, `Kb`, dan `Ks` tidak pernah lewat jaringan sebagai
-   plaintext (kecuali di log terminal masing-masing).
-
 ## Pengujian
 
 ```
@@ -270,16 +255,6 @@ python -m unittest tests.test_aes -v         # AES saja (vektor FIPS-197, SP 800
 python -m unittest tests.test_caesar         # Caesar saja
 python -m unittest tests.test_protocol -v    # end-to-end 5 langkah di loopback
 ```
-
-## Skenario demo (ubah key, key salah, dua arah, rekey)
-
-1. `bob> setkey 21` lalu `kdc> setkey bob 21`; `alice> connect bob ...` lagi -> sukses,
-   `Ks` baru (rekey per connect, lihat `sessions`).
-2. Key tidak cocok di satu sisi saja (`bob> setkey 99`, KDC tetap 21) -> `connect`
-   gagal dengan pesan yang menunjuk ticket/Kb.
-3. `bob> connect alice <IP_ALICE>:6001` -> Bob initiator, lalu kirim dua arah.
-4. Salah ketik `--key` saat start Alice -> langkah 2 gagal didekripsi, program
-   menjelaskan `Ka` tidak cocok, tidak crash.
 
 ## Keterbatasan yang diketahui
 
