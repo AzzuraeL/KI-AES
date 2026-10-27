@@ -4,8 +4,8 @@ import threading
 
 from . import caesar
 from .aes import decrypt_text, encrypt_text, prepare_key
-from .protocol import (ProtocolError, f_of_n2, is_session_key, new_nonce, recv_msg,
-                       say, send_msg, unpack, valid_id)
+from .protocol import (ProtocolError, f_of_n2, is_session_key, new_nonce, new_session_key,
+                       pack, recv_msg, say, send_msg, unpack, valid_id)
 
 HANDSHAKE_TIMEOUT = 10
 
@@ -16,6 +16,7 @@ HELP = """commands:
   close <peer>                   close a session
   key                            show my Caesar key (shared with the KDC)
   setkey <shift>                 change my Caesar key
+  setks <peer> [key]             change Ks on the live session (random if key omitted)
   kdc <host>:<port>              change KDC address
   help | quit"""
 
@@ -155,6 +156,27 @@ class Node:
                  f"   key (Ks)   : {session.ks_text}\n"
                  f"   ciphertext : {cipher}")
 
+    def set_session_key(self, peer, ks_text=None):
+        with self.lock:
+            session = self.sessions.get(peer)
+        if session is None:
+            raise ProtocolError(f"no session with {peer}, use connect first")
+        if ks_text is None:
+            ks_text = new_session_key()
+        elif not is_session_key(ks_text):
+            raise ValueError("Ks must be 16 alphanumeric ASCII characters")
+        cipher = encrypt_text(session.key, pack("setks", ks_text))
+        try:
+            session.send({"type": "SETKS", "cipher": cipher})
+        except OSError:
+            self._drop(session)
+            raise
+        with self.lock:
+            session.ks_text = ks_text
+            session.key = prepare_key(ks_text)
+        self.log(f"[SETKS] {self.name} -> {peer} : Ks changed to {ks_text}")
+        return ks_text
+
     def close_session(self, peer):
         with self.lock:
             session = self.sessions.pop(peer, None)
@@ -265,6 +287,20 @@ class Node:
                 break
             if msg is None or msg.get("type") == "BYE":
                 break
+            if msg.get("type") == "SETKS":
+                try:
+                    kind, ks = unpack(decrypt_text(session.key, msg.get("cipher")), 2)
+                except ValueError:
+                    self.log(f"setks from {session.peer} rejected: cannot decrypt with current Ks")
+                    continue
+                if kind != "setks" or not is_session_key(ks):
+                    self.log(f"setks from {session.peer} rejected: bad payload")
+                    continue
+                with self.lock:
+                    session.ks_text = ks
+                    session.key = prepare_key(ks)
+                self.log(f"[SETKS] {session.peer} changed Ks to {ks}")
+                continue
             if msg.get("type") != "MSG":
                 continue
             cipher = msg.get("cipher")
@@ -325,6 +361,11 @@ def run_command(node, line):
     elif cmd == "setkey":
         node.set_key(rest)
         say(f"Caesar key changed (shift: {node.shift})")
+    elif cmd == "setks":
+        args = rest.split(None, 1)
+        if not args:
+            raise ValueError("usage: setks <peer> [key]")
+        node.set_session_key(args[0], args[1] if len(args) > 1 else None)
     elif cmd == "kdc":
         node.kdc_addr = parse_addr(rest)
         say(f"KDC set to {rest}")

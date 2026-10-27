@@ -91,6 +91,7 @@ Perintah REPL (`nama>`):
 | `close <peer>` | `close bob` | kirim BYE dan tutup sesi |
 | `key` | | tampilkan key Caesar sendiri |
 | `setkey <shift>` | `setkey 21` | ganti key tanpa restart (harus diikuti `setkey <id> <shift>` di KDC) |
+| `setks <peer> [key]` | `setks bob KsKustom12345678` | ganti `Ks` pada sesi yang sedang hidup, tanpa `connect` ulang; key acak bila tidak ditulis. Perintah dikirim ke peer terenkripsi `Ks` lama, jadi kedua sisi otomatis sinkron |
 | `kdc <host>:<port>` | `kdc 192.168.1.10:5000` | ganti alamat KDC |
 | `help` | | daftar perintah |
 | `quit` / `exit` / Ctrl+C | | tutup semua sesi dan keluar |
@@ -205,6 +206,7 @@ Semua ciphertext berupa hex. Pemisah field di dalam plaintext terenkripsi adalah
 | - | `{"type":"HANDSHAKE_OK"}` | B -> A | kontrol (ack langkah 5) | tidak |
 | - | `{"type":"ERROR","reason":...}` | dua arah | kontrol (penolakan/gagal) | tidak |
 | data | `{"type":"MSG","from":...,"cipher":...}` | dua arah | `E(Ks, pesan)` | AES-CBC |
+| rekey | `{"type":"SETKS","cipher":...}` | dua arah | `E(Ks_lama, "setks||Ks_baru")`, dari `setks` | AES-CBC |
 | tutup | `{"type":"BYE"}` | dua arah | - | tidak |
 
 Aturan format: key dan plaintext ASCII (non-ASCII ditolak dengan pesan jelas),

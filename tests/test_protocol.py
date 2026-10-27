@@ -5,7 +5,7 @@ import unittest
 
 from keydist.kdc import KDC
 from keydist.node import Node
-from keydist.protocol import ProtocolError, recv_msg, send_msg
+from keydist.protocol import ProtocolError, is_session_key, recv_msg, send_msg
 
 
 def loopback(index):
@@ -115,6 +115,31 @@ class ProtocolTests(unittest.TestCase):
         env.alice.connect("bob", env.bob_host, env.bob_port)
         with self.assertRaises(ValueError):
             env.alice.send_text("bob", "caf\u00e9")
+
+    def test_setks_changes_key_on_live_session(self):
+        env = self.env
+        env.alice.connect("bob", env.bob_host, env.bob_port)
+        old = env.alice.sessions["bob"].ks_text
+        custom = "KsKustom12345678"
+        env.alice.set_session_key("bob", custom)
+        self.assertTrue(wait_for(lambda: env.bob.sessions["alice"].ks_text == custom))
+        self.assertEqual(env.alice.sessions["bob"].ks_text, custom)
+        self.assertNotEqual(custom, old)
+        env.alice.send_text("bob", "pesan key baru")
+        self.assertTrue(wait_for(lambda: any("plaintext  : pesan key baru" in m for m in env.bob_log)))
+        env.bob.send_text("alice", "balas key baru")
+        self.assertTrue(wait_for(lambda: any("plaintext  : balas key baru" in m for m in env.alice_log)))
+
+    def test_setks_random_and_rejects_bad_key(self):
+        env = self.env
+        env.alice.connect("bob", env.bob_host, env.bob_port)
+        old = env.alice.sessions["bob"].ks_text
+        new = env.alice.set_session_key("bob")
+        self.assertTrue(is_session_key(new))
+        self.assertNotEqual(new, old)
+        self.assertTrue(wait_for(lambda: env.bob.sessions["alice"].ks_text == new))
+        with self.assertRaises(ValueError):
+            env.alice.set_session_key("bob", "pendek")
 
     def test_replayed_ticket_without_ks_fails(self):
         env = self.env
